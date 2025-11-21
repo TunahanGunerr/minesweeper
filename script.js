@@ -308,13 +308,32 @@ function showProbability(x, y, percent) {
     const probDiv = document.createElement('div');
     probDiv.className = 'probability';
     
-    // Renk kodlaması (Mr Gris tarzı)
-    let color = 'rgba(0,0,0,0.5)';
-    if (percent === 100) color = 'rgba(255,0,0,0.8)'; // Kesin Mayın
-    if (percent === 0) color = 'rgba(0,255,0,0.4)';   // Güvenli
+    // --- YENİ RENK MANTIĞI ---
+    // linear-gradient kullanarak doluluk oranını ayarlıyoruz.
+    // %70 yeşil istiyorsan: aşağıdan yukarıya %70 yeşil, kalanı sarı.
+    // Yeşil: #4CAF50 (Mayın ihtimali)
+    // Sarı: #FFEB3B (Boş olma ihtimali - dolgu)
     
-    probDiv.style.backgroundColor = color;
+    const green = '#4CAF50'; // Güzel bir yeşil
+    const yellow = '#FFEB3B'; // Parlak bir sarı
+    
+    // CSS Gradient: Alttan yukarı doğru, X%'e kadar yeşil, X%'den sonra sarı
+    probDiv.style.background = `linear-gradient(to top, ${green} ${percent}%, ${yellow} ${percent}%)`;
+    
+    // Yazı rengi ve gölgesi (Sarı üzerinde beyaz okunmaz, siyah yapıyoruz)
+    probDiv.style.color = '#000'; 
+    probDiv.style.fontWeight = 'bold';
+    probDiv.style.textShadow = '0px 0px 2px #fff'; // Okunabilirlik için beyaz hale
+    probDiv.style.display = 'flex';
+    probDiv.style.alignItems = 'center';
+    probDiv.style.justifyContent = 'center';
+    probDiv.style.fontSize = '12px';
+
+    // Yüzdeyi yuvarla ve yaz
     probDiv.innerText = Math.round(percent) + '%';
+    
+    // Eğer %100 ise tam yeşil olsun (zaten gradient halleder ama garanti olsun)
+    // Eğer %0 ise tam sarı olsun.
     
     el.appendChild(probDiv);
 }
