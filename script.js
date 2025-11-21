@@ -21,7 +21,6 @@ function setupToolbar() {
 }
 
 function resetBoard() {
-    // Input değerlerini güvenli şekilde al
     const wInput = document.getElementById('width');
     const hInput = document.getElementById('height');
     const mInput = document.getElementById('totalMines');
@@ -31,7 +30,7 @@ function resetBoard() {
     if(mInput) totalMines = parseInt(mInput.value);
     
     const boardEl = document.getElementById('board');
-    if (!boardEl) return; // Hata koruması
+    if (!boardEl) return;
 
     boardEl.style.gridTemplateColumns = `repeat(${width}, 30px)`;
     boardEl.innerHTML = '';
@@ -57,13 +56,11 @@ function resetBoard() {
         }
         grid.push(row);
     }
-    updateStatus("Tahta hazır. Durumu çizip 'Analiz Et'e basın.");
+    updateStatus("Tahta hazır.");
 }
 
 function handleCellClick(x, y, e) {
     const cellObj = grid[y][x];
-    
-    // Tıklanınca eski olasılıkları temizle
     clearProbabilities();
 
     if (selectedTool === 'flag') {
@@ -114,8 +111,6 @@ function clearProbabilities() {
     document.querySelectorAll('.probability').forEach(el => el.remove());
 }
 
-// --- ANALİZ MOTORU VE VERİ GÖNDERİCİ ---
-
 function analyzeBoard() {
     clearProbabilities();
     updateStatus("Hesaplanıyor...");
@@ -124,24 +119,18 @@ function analyzeBoard() {
     let constraints = [];
     let knownMines = 0;
 
-    // 1. Temel Hazırlık
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const cell = grid[y][x];
-            
             if (cell.state === 'flag') knownMines++;
-            
             if (cell.state === 'unknown') {
                 unknowns.push({x, y, index: unknowns.length});
             }
-
             if (cell.state === 'safe' && cell.value > 0) {
                 let neighbors = getNeighbors(x, y);
                 let flagsAround = neighbors.filter(n => grid[n.y][n.x].state === 'flag').length;
                 let unknownNeighbors = neighbors.filter(n => grid[n.y][n.x].state === 'unknown');
-                
                 let effectiveValue = cell.value - flagsAround;
-                
                 if (unknownNeighbors.length > 0) {
                     constraints.push({
                         x, y,
@@ -153,19 +142,12 @@ function analyzeBoard() {
         }
     }
 
-    // Basit hata kontrolleri
+    // Hata Kontrolleri
     for(let c of constraints) {
-        if (c.value < 0) {
-            updateStatus(`Hata: (${c.x},${c.y}) etrafında çok fazla bayrak var!`);
-            return;
-        }
-        if (c.value > c.targets.length) {
-            updateStatus(`Hata: (${c.x},${c.y}) etrafında yeterli boş alan yok!`);
-            return;
-        }
+        if (c.value < 0) { updateStatus("Hata: Fazla bayrak!"); return; }
+        if (c.value > c.targets.length) { updateStatus("Hata: Yetersiz alan!"); return; }
     }
 
-    // 2. Sınır (Frontier) Ayrımı
     let frontierSet = new Set();
     constraints.forEach(c => {
         c.targets.forEach(t => frontierSet.add(`${t.x},${t.y}`));
@@ -173,11 +155,9 @@ function analyzeBoard() {
 
     let frontierCells = unknowns.filter(u => frontierSet.has(`${u.x},${u.y}`));
     let otherUnknowns = unknowns.filter(u => !frontierSet.has(`${u.x},${u.y}`));
-
     let validSolutions = 0;
     let mineCounts = new Array(frontierCells.length).fill(0);
 
-    // 3. Recursive Backtracking
     function solve(index) {
         if (index === frontierCells.length) {
             validSolutions++;
@@ -186,17 +166,11 @@ function analyzeBoard() {
             }
             return;
         }
-
         let cell = frontierCells[index];
-
-        // Dene: Mayın Var
         cell.isMine = true;
         if (isValidSoFar(cell)) solve(index + 1);
-
-        // Dene: Mayın Yok
         cell.isMine = false;
         if (isValidSoFar(cell)) solve(index + 1);
-        
         delete cell.isMine;
     }
 
@@ -205,7 +179,6 @@ function analyzeBoard() {
             let placedMines = 0;
             let undefinedCells = 0;
             let isRelevant = false;
-
             for (let t of c.targets) {
                 let realCell = frontierCells.find(f => f.x === t.x && f.y === t.y);
                 if (realCell) {
@@ -214,7 +187,6 @@ function analyzeBoard() {
                     else if (realCell.isMine === undefined) undefinedCells++;
                 }
             }
-
             if (!isRelevant) continue;
             if (placedMines > c.value) return false;
             if (c.value > placedMines + undefinedCells) return false;
@@ -222,30 +194,20 @@ function analyzeBoard() {
         return true;
     }
 
-    // 4. Asenkron Çalıştırma (Arayüzü dondurmamak için)
     setTimeout(() => {
         solve(0);
 
-        // --- BURASI ÇOK ÖNEMLİ: SONUÇLARI TOPLAYIP GERİ YOLLUYORUZ ---
-        let resultsToSend = []; 
-
         if (validSolutions === 0) {
-            updateStatus("Hata: İmkansız konfigürasyon!");
+            updateStatus("İmkansız durum!");
             return;
         }
 
-        // A) Frontier Sonuçları
+        // Sonuçları SADECE BURAYA (Senin Siteye) Çiz
         frontierCells.forEach((cell, i) => {
             let probability = (mineCounts[i] / validSolutions) * 100;
-            
-            // Kendi sitemizde göster
             showProbability(cell.x, cell.y, probability);
-            
-            // Oyun sitesine göndermek için listeye ekle
-            resultsToSend.push({ x: cell.x, y: cell.y, percent: probability });
         });
 
-        // B) Diğer (Arkada Kalan) Sonuçlar
         let avgFrontierMines = mineCounts.reduce((a,b)=>a+b, 0) / validSolutions;
         let remainingMines = totalMines - knownMines - avgFrontierMines;
         
@@ -255,20 +217,10 @@ function analyzeBoard() {
             
             otherUnknowns.forEach(cell => {
                 showProbability(cell.x, cell.y, otherProb);
-                resultsToSend.push({ x: cell.x, y: cell.y, percent: otherProb });
             });
         }
-
-        updateStatus("Analiz bitti. Sonuçlar oyuna gönderildi.");
-
-        // C) VERİYİ OYUN SİTESİNE POSTALA (Bu kısım eksikti)
-        if (window.opener) {
-            window.opener.postMessage({
-                type: 'ANALYSIS_RESULT',
-                data: resultsToSend
-            }, '*');
-        }
-
+        updateStatus("Analiz tamamlandı.");
+        // ARTIK OYUN SİTESİNE MESAJ GÖNDERMİYORUZ
     }, 10);
 }
 
@@ -295,33 +247,25 @@ function showProbability(x, y, percent) {
     
     let roundedPercent = Math.round(percent);
 
-    // --- RENK AYARLARI (DÜZELTİLDİ) ---
-    const colorZero = '#FF0000';      // %0 -> Kırmızı (#FF0000)
-    const colorHundred = '#000080';   // %100 -> Lacivert (#000080)
-    const colorFill = '#4CAF50';      // Dolum -> Yeşil
-    const colorEmpty = '#FFEB3B';     // Boşluk -> Sarı
+    // Renk Ayarları (Kırmızı=Güvenli, Lacivert=Mayın)
+    const colorZero = '#FF0000';      
+    const colorHundred = '#000080';   
+    const colorFill = '#4CAF50';      
+    const colorEmpty = '#FFEB3B';     
     
     if (roundedPercent === 100) {
-        // KESİN MAYIN
         probDiv.style.backgroundColor = colorHundred;
         probDiv.style.color = '#ffffff'; 
     } else if (roundedPercent === 0) {
-        // KESİN GÜVENLİ
         probDiv.style.backgroundColor = colorZero;
         probDiv.style.color = '#ffffff'; 
     } else {
-        // ARA DEĞERLER
         probDiv.style.background = `linear-gradient(to top, ${colorFill} ${percent}%, ${colorEmpty} ${percent}%)`;
         probDiv.style.color = '#000000'; 
     }
     
     probDiv.style.fontWeight = 'bold';
-    if (roundedPercent > 0 && roundedPercent < 100) {
-        probDiv.style.textShadow = '0px 0px 2px #fff'; 
-    } else {
-        probDiv.style.textShadow = 'none'; 
-    }
-    
+    probDiv.style.textShadow = (roundedPercent > 0 && roundedPercent < 100) ? '0px 0px 2px #fff' : 'none';
     probDiv.style.display = 'flex';
     probDiv.style.alignItems = 'center';
     probDiv.style.justifyContent = 'center';
@@ -336,13 +280,10 @@ function updateStatus(msg) {
     if(st) st.innerText = msg;
 }
 
-// --- VERİ ALICI (Oyun Sitesinden Gelen Veriyi Dinler) ---
 window.addEventListener('message', (event) => {
     if (!event.data || event.data.type !== 'SYNC_BOARD') return;
 
     const gameData = event.data.payload;
-    
-    // Değerleri güncelle
     const wInput = document.getElementById('width');
     const hInput = document.getElementById('height');
     const mInput = document.getElementById('totalMines');
@@ -355,28 +296,24 @@ window.addEventListener('message', (event) => {
     height = gameData.height;
     totalMines = gameData.totalMines;
 
-    // Tahtayı yeniden oluştur
     resetBoard();
 
-    // Hücreleri doldur
-    gameData.grid.forEach(row => {
-        if(!row) return;
-        row.forEach(cellData => {
-            if (!cellData || cellData.status === 'unknown') return; 
-
-            const cellObj = grid[cellData.y][cellData.x];
-            
-            if (cellData.status === 'flag') {
-                cellObj.state = 'flag';
-            } else if (cellData.status === 'safe') {
-                cellObj.state = 'safe';
-                cellObj.value = cellData.value;
-            }
-            
-            renderCell(cellData.x, cellData.y);
+    if (gameData.grid) {
+        gameData.grid.forEach(row => {
+            if(!row) return;
+            row.forEach(cellData => {
+                if (!cellData || cellData.status === 'unknown') return; 
+                const cellObj = grid[cellData.y][cellData.x];
+                
+                if (cellData.status === 'flag') {
+                    cellObj.state = 'flag';
+                } else if (cellData.status === 'safe') {
+                    cellObj.state = 'safe';
+                    cellObj.value = cellData.value;
+                }
+                renderCell(cellData.x, cellData.y);
+            });
         });
-    });
-
-    // Her veri geldiğinde analizi otomatik başlat
+    }
     analyzeBoard();
 });
