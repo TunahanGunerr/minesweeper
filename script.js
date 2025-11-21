@@ -116,43 +116,159 @@ function analyzeBoard() {
     clearProbabilities();
     updateStatus("Hesaplanıyor...");
 
-    // 1. Sınır (Frontier) Hücrelerini Bul
-    // Bir sayıya komşu olan ama henüz açılmamış (unknown) hücrelerdir.
+    // 1. Temel Hazırlık: Bilinmeyenleri ve Kısıtları (Constraints) Bul
     let unknowns = [];
     let constraints = [];
-
-    // Bilinen mayınları say
     let knownMines = 0;
 
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const cell = grid[y][x];
+            
+            // Bayrakları say
             if (cell.state === 'flag') knownMines++;
             
+            // Bilinmeyenleri listele
             if (cell.state === 'unknown') {
                 unknowns.push({x, y, index: unknowns.length});
             }
 
+            // Sayı kısıtlarını oluştur
             if (cell.state === 'safe' && cell.value > 0) {
-                // Bu sayı bir kısıtlayıcıdır (Constraint)
                 let neighbors = getNeighbors(x, y);
                 let flagsAround = neighbors.filter(n => grid[n.y][n.x].state === 'flag').length;
                 let unknownNeighbors = neighbors.filter(n => grid[n.y][n.x].state === 'unknown');
                 
-                // Etraftaki bayrakları sayıdan düş, kalan sayı bilinmeyenlere dağıtılmalı
+                // Sayının istediği kalan mayın sayısı (Sayı - Etrafındaki Bayraklar)
                 let effectiveValue = cell.value - flagsAround;
                 
                 if (unknownNeighbors.length > 0) {
                     constraints.push({
                         x, y,
                         value: effectiveValue,
-                        targets: unknownNeighbors // Bu kısıt sadece bu komşuları etkiler
+                        targets: unknownNeighbors
                     });
                 }
             }
         }
     }
 
+    // 2. Sınır (Frontier) Ayrımı
+    // Sadece sayılara değen bilinmeyenleri (Frontier) hesaplayacağız.
+    let frontierSet = new Set();
+    constraints.forEach(c => {
+        c.targets.forEach(t => frontierSet.add(`${t.x},${t.y}`));
+    });
+
+    let frontierCells = unknowns.filter(u => frontierSet.has(`${u.x},${u.y}`));
+    let otherUnknowns = unknowns.filter(u => !frontierSet.has(`${u.x},${u.y}`));
+
+    // Çözüm değişkenleri
+    let validSolutions = 0;
+    let mineCounts = new Array(frontierCells.length).fill(0);
+
+    // 3. Recursive Backtracking (Çözücü Fonksiyon)
+    function solve(index) {
+        if (index === frontierCells.length) {
+            validSolutions++;
+            for(let i=0; i<frontierCells.length; i++) {
+                if (frontierCells[i].isMine) mineCounts[i]++;
+            }
+            return;
+        }
+
+        let cell = frontierCells[index];
+
+        // Dene: Mayın Var
+        cell.isMine = true;
+        if (isValidSoFar(cell)) {
+            solve(index + 1);
+        }
+
+        // Dene: Mayın Yok
+        cell.isMine = false;
+        if (isValidSoFar(cell)) {
+            solve(index + 1);
+        }
+        
+        delete cell.isMine; // Temizlik
+    }
+
+    // Geçerlilik Kontrolü
+    function isValidSoFar(changedCell) {
+        for (let c of constraints) {
+            let placedMines = 0;
+            let undefinedCells = 0;
+            let isRelevant = false;
+
+            for (let t of c.targets) {
+                let realCell = frontierCells.find(f => f.x === t.x && f.y === t.y);
+                if (realCell) {
+                    if (realCell === changedCell) isRelevant = true;
+                    if (realCell.isMine === true) placedMines++;
+                    else if (realCell.isMine === undefined) undefinedCells++;
+                }
+            }
+
+            if (!isRelevant) continue;
+            if (placedMines > c.value) return false; // Çok fazla mayın
+            if (c.value > placedMines + undefinedCells) return false; // Yetersiz boşluk
+        }
+        return true;
+    }
+
+    // 4. Asenkron Çalıştırma (Arayüzü dondurmamak için)
+    setTimeout(() => {
+        solve(0);
+
+        // --- SONUÇLARI TOPLAMA VE GÖNDERME KISMI ---
+        let resultsToSend = []; 
+
+        if (validSolutions === 0) {
+            updateStatus("Hata: İmkansız konfigürasyon veya çelişki var!");
+            return;
+        }
+
+        // A) Frontier Hücrelerin Sonuçları
+        frontierCells.forEach((cell, i) => {
+            let probability = (mineCounts[i] / validSolutions) * 100;
+            
+            // 1. Kendi sitemize çiz
+            showProbability(cell.x, cell.y, probability);
+            
+            // 2. Gönderilecek pakete ekle
+            resultsToSend.push({ x: cell.x, y: cell.y, percent: probability });
+        });
+
+        // B) Diğer (Arkada Kalan) Hücrelerin Sonuçları
+        let avgFrontierMines = mineCounts.reduce((a,b)=>a+b, 0) / validSolutions;
+        let remainingMines = totalMines - knownMines - avgFrontierMines;
+        
+        if (otherUnknowns.length > 0) {
+            let otherProb = (remainingMines / otherUnknowns.length) * 100;
+            otherProb = Math.max(0, Math.min(100, otherProb)); // 0-100 arasına sabitle
+            
+            otherUnknowns.forEach(cell => {
+                // 1. Kendi sitemize çiz
+                showProbability(cell.x, cell.y, otherProb);
+                
+                // 2. Gönderilecek pakete ekle
+                resultsToSend.push({ x: cell.x, y: cell.y, percent: otherProb });
+            });
+        }
+
+        updateStatus("Analiz bitti. Sonuçlar oyuna gönderildi.");
+
+        // C) Sonuçları Oyun Sitesine (window.opener) Gönder
+        if (window.opener) {
+            window.opener.postMessage({
+                type: 'ANALYSIS_RESULT',
+                data: resultsToSend
+            }, '*');
+        }
+
+    }, 10);
+}
     // Basit hataları yakala
     for(let c of constraints) {
         if (c.value < 0) {
@@ -394,3 +510,4 @@ window.addEventListener('message', (event) => {
     // Otomatik analiz başlat
     analyzeBoard();
 });
+
