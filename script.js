@@ -308,32 +308,46 @@ function showProbability(x, y, percent) {
     const probDiv = document.createElement('div');
     probDiv.className = 'probability';
     
-    // --- YENİ RENK MANTIĞI ---
-    // linear-gradient kullanarak doluluk oranını ayarlıyoruz.
-    // %70 yeşil istiyorsan: aşağıdan yukarıya %70 yeşil, kalanı sarı.
-    // Yeşil: #4CAF50 (Mayın ihtimali)
-    // Sarı: #FFEB3B (Boş olma ihtimali - dolgu)
+    // Yuvarlanmış yüzdeyi alalım (99.9 gibi sayılar karışıklık yaratmasın)
+    let roundedPercent = Math.round(percent);
+
+    // --- RENK AYARLARI ---
+    const colorZero = '#000080';      // %0 için Kırmızı
+    const colorHundred = '#FF0000';   // %100 için Lacivert
+    const colorFill = '#4CAF50';      // Dolum Rengi (Yeşil)
+    const colorEmpty = '#FFEB3B';     // Boşluk Rengi (Sarı)
     
-    const green = '#4CAF50'; // Güzel bir yeşil
-    const yellow = '#FFEB3B'; // Parlak bir sarı
+    if (roundedPercent === 100) {
+        // KESİN MAYIN -> LACİVERT
+        probDiv.style.backgroundColor = colorHundred;
+        probDiv.style.color = '#ffffff'; // Lacivert üstüne beyaz yazı
+    } else if (roundedPercent === 0) {
+        // KESİN GÜVENLİ -> KIRMIZI
+        probDiv.style.backgroundColor = colorZero;
+        probDiv.style.color = '#ffffff'; // Kırmızı üstüne beyaz yazı
+    } else {
+        // ARADAKİLER -> YEŞİL / SARI GRADIENT
+        // Alttan yukarı doğru %X kadar Yeşil, kalanı Sarı
+        probDiv.style.background = `linear-gradient(to top, ${colorFill} ${percent}%, ${colorEmpty} ${percent}%)`;
+        probDiv.style.color = '#000000'; // Sarı/Yeşil üstüne siyah yazı daha iyi okunur
+    }
     
-    // CSS Gradient: Alttan yukarı doğru, X%'e kadar yeşil, X%'den sonra sarı
-    probDiv.style.background = `linear-gradient(to top, ${green} ${percent}%, ${yellow} ${percent}%)`;
-    
-    // Yazı rengi ve gölgesi (Sarı üzerinde beyaz okunmaz, siyah yapıyoruz)
-    probDiv.style.color = '#000'; 
+    // Ortak Stil Ayarları
     probDiv.style.fontWeight = 'bold';
-    probDiv.style.textShadow = '0px 0px 2px #fff'; // Okunabilirlik için beyaz hale
+    // Yazı gölgesi (Okunabilirlik için)
+    if (roundedPercent > 0 && roundedPercent < 100) {
+        probDiv.style.textShadow = '0px 0px 2px #fff'; // Ara renklerde beyaz gölge
+    } else {
+        probDiv.style.textShadow = 'none'; // Düz renklerde gölgeye gerek yok
+    }
+    
     probDiv.style.display = 'flex';
     probDiv.style.alignItems = 'center';
     probDiv.style.justifyContent = 'center';
-    probDiv.style.fontSize = '12px';
+    probDiv.style.fontSize = '13px';
 
-    // Yüzdeyi yuvarla ve yaz
-    probDiv.innerText = Math.round(percent) + '%';
-    
-    // Eğer %100 ise tam yeşil olsun (zaten gradient halleder ama garanti olsun)
-    // Eğer %0 ise tam sarı olsun.
+    // Yüzdeyi yaz
+    probDiv.innerText = roundedPercent + '%';
     
     el.appendChild(probDiv);
 }
