@@ -312,8 +312,8 @@ function showProbability(x, y, percent) {
     let roundedPercent = Math.round(percent);
 
     // --- RENK AYARLARI ---
-    const colorZero = '#FF0000';      // %0 için Kırmızı
-    const colorHundred = '#1100ffff';   // %100 için Lacivert
+    const colorZero = '#1100ffff';      // %0 için Kırmızı
+    const colorHundred = '#FF0000';   // %100 için Lacivert
     const colorFill = '#4CAF50';      // Dolum Rengi (Yeşil)
     const colorEmpty = '#FFEB3B';     // Boşluk Rengi (Sarı)
     
@@ -396,3 +396,4 @@ window.addEventListener('message', (event) => {
     // Otomatik analiz başlat
     analyzeBoard();
 });
+
