@@ -21,9 +21,13 @@ function setupToolbar() {
 }
 
 function resetBoard() {
-    width = parseInt(document.getElementById('width').value);
-    height = parseInt(document.getElementById('height').value);
-    totalMines = parseInt(document.getElementById('totalMines').value);
+    const wInput = document.getElementById('width');
+    const hInput = document.getElementById('height');
+    const mInput = document.getElementById('totalMines');
+    
+    if(wInput) width = parseInt(wInput.value) || 30;
+    if(hInput) height = parseInt(hInput.value) || 16;
+    if(mInput) totalMines = parseInt(mInput.value) || 99;
     
     const boardEl = document.getElementById('board');
     boardEl.style.gridTemplateColumns = `repeat(${width}, 30px)`;
@@ -37,17 +41,16 @@ function resetBoard() {
             cell.classList.add('cell');
             cell.dataset.x = x;
             cell.dataset.y = y;
-            cell.dataset.state = 'unknown'; // unknown, flag, safe (numbers)
+            cell.dataset.state = 'unknown'; 
             
             cell.addEventListener('mousedown', (e) => handleCellClick(x, y, e));
             cell.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
-                // Sağ tık kısayolu: Bayrak ve Bilinmeyen arasında geçiş
                 toggleFlag(x, y);
             });
 
             boardEl.appendChild(cell);
-            row.push({ element: cell, value: null, state: 'unknown' }); // value: 0-8
+            row.push({ element: cell, value: null, state: 'unknown', x: x, y: y });
         }
         grid.push(row);
     }
@@ -56,9 +59,6 @@ function resetBoard() {
 
 function handleCellClick(x, y, e) {
     const cellObj = grid[y][x];
-    const el = cellObj.element;
-
-    // Mevcut olasılıkları temizle
     clearProbabilities();
 
     if (selectedTool === 'flag') {
@@ -68,7 +68,6 @@ function handleCellClick(x, y, e) {
         cellObj.state = 'unknown';
         cellObj.value = null;
     } else {
-        // Sayı yerleştirme (0-8)
         cellObj.state = 'safe';
         cellObj.value = parseInt(selectedTool);
     }
@@ -90,7 +89,7 @@ function renderCell(x, y) {
     const cellObj = grid[y][x];
     const el = cellObj.element;
 
-    el.className = 'cell'; // Reset class
+    el.className = 'cell'; 
     el.innerText = '';
     delete el.dataset.val;
 
@@ -110,181 +109,252 @@ function clearProbabilities() {
     document.querySelectorAll('.probability').forEach(el => el.remove());
 }
 
-// --- ANALİZ MOTORU (SOLVER) ---
+function updateStatus(msg) {
+    const st = document.getElementById('status');
+    if(st) st.innerText = msg;
+}
+
+// --- OPTİMİZE EDİLMİŞ ANALİZ MOTORU ---
 
 function analyzeBoard() {
     clearProbabilities();
-    updateStatus("Hesaplanıyor...");
+    updateStatus("Analiz ediliyor...");
 
-    // 1. Sınır (Frontier) Hücrelerini Bul
-    // Bir sayıya komşu olan ama henüz açılmamış (unknown) hücrelerdir.
+    // "setTimeout" kullanıyoruz ki UI çizilsin, donma hissi olmasın
+    setTimeout(() => {
+        runSolver();
+    }, 20);
+}
+
+function runSolver() {
     let unknowns = [];
     let constraints = [];
-
-    // Bilinen mayınları say
     let knownMines = 0;
 
+    // 1. Verileri Topla
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const cell = grid[y][x];
             if (cell.state === 'flag') knownMines++;
             
             if (cell.state === 'unknown') {
-                unknowns.push({x, y, index: unknowns.length});
+                // Solver için geçici bir ID atıyoruz
+                cell.solverId = unknowns.length;
+                unknowns.push(cell);
             }
 
             if (cell.state === 'safe' && cell.value > 0) {
-                // Bu sayı bir kısıtlayıcıdır (Constraint)
                 let neighbors = getNeighbors(x, y);
-                let flagsAround = neighbors.filter(n => grid[n.y][n.x].state === 'flag').length;
-                let unknownNeighbors = neighbors.filter(n => grid[n.y][n.x].state === 'unknown');
+                let flagCount = 0;
+                let unknownNeighbors = [];
                 
-                // Etraftaki bayrakları sayıdan düş, kalan sayı bilinmeyenlere dağıtılmalı
-                let effectiveValue = cell.value - flagsAround;
+                neighbors.forEach(n => {
+                    let neighborCell = grid[n.y][n.x];
+                    if (neighborCell.state === 'flag') flagCount++;
+                    if (neighborCell.state === 'unknown') unknownNeighbors.push(neighborCell);
+                });
+
+                let effectiveValue = cell.value - flagCount;
                 
+                // Eğer constraint geçerliyse (etrafında bilinmeyen varsa) ekle
                 if (unknownNeighbors.length > 0) {
                     constraints.push({
                         x, y,
                         value: effectiveValue,
-                        targets: unknownNeighbors // Bu kısıt sadece bu komşuları etkiler
+                        targets: unknownNeighbors 
                     });
                 }
             }
         }
     }
 
-    // Basit hataları yakala
+    // Hata Kontrolü
     for(let c of constraints) {
-        if (c.value < 0) {
-            alert(`Hata: (${c.x},${c.y}) noktasında çok fazla bayrak var!`);
-            return;
-        }
-        if (c.value > c.targets.length) {
-            alert(`Hata: (${c.x},${c.y}) noktasında yeterli boş alan yok!`);
-            return;
-        }
+        if (c.value < 0) { updateStatus("Hata: Bir sayıda fazla bayrak var!"); return; }
+        if (c.value > c.targets.length) { updateStatus("Hata: Sayı için yeterli boşluk yok!"); return; }
     }
 
-    // 2. Sınır Optimizasyonu
-    // Tüm bilinmeyenleri denemek çok uzun sürer. Sadece sayılara değenleri (Frontier) hesaplayacağız.
-    // Sayılara değmeyen "arka plandaki" bilinmeyenler, kalan mayınları paylaşır.
+    // 2. Sınır (Frontier) Tespiti ve Kümeleme (Clustering)
+    // Tüm haritayı tek seferde çözmek yerine, birbirini etkileyen küçük adaları bulacağız.
     
-    let frontierSet = new Set();
+    let frontierCells = new Set();
     constraints.forEach(c => {
-        c.targets.forEach(t => frontierSet.add(`${t.x},${t.y}`));
+        c.targets.forEach(t => frontierCells.add(t));
+    });
+    
+    let frontierArray = Array.from(frontierCells);
+    let otherUnknowns = unknowns.filter(u => !frontierCells.has(u));
+
+    // Hücre -> Constraint haritası (Hangi hücre hangi sayılara bağlı?)
+    let cellToConstraints = new Map();
+    frontierArray.forEach(cell => cellToConstraints.set(cell, []));
+    
+    constraints.forEach(c => {
+        c.targets.forEach(t => {
+            if(cellToConstraints.has(t)) {
+                cellToConstraints.get(t).push(c);
+            }
+        });
     });
 
-    let frontierCells = unknowns.filter(u => frontierSet.has(`${u.x},${u.y}`));
-    let otherUnknowns = unknowns.filter(u => !frontierSet.has(`${u.x},${u.y}`));
+    // Kümeleri Bul (Union-Find veya BFS ile)
+    let clusters = [];
+    let visited = new Set();
 
-    // Çözümler
-    let validSolutions = 0;
-    let mineCounts = new Array(frontierCells.length).fill(0);
+    frontierArray.forEach(startCell => {
+        if (visited.has(startCell)) return;
 
-    // Recursive Backtracking
-    // Frontier hücrelere mayın koyup koymama durumlarını dene
-    
-    function solve(index) {
-        if (index === frontierCells.length) {
-            // Tüm frontier hücrelere karar verildi. Bu geçerli bir çözüm mü?
-            // Tüm constraintleri kontrol et
-            // Not: Backtracking sırasında "erken budama" (pruning) yapmak daha hızlıdır ama
-            // kod karmaşıklığını arttırır. Bu haliyle küçük/orta tahtalarda hızlı çalışır.
-            validSolutions++;
-            for(let i=0; i<frontierCells.length; i++) {
-                if (frontierCells[i].isMine) mineCounts[i]++;
-            }
+        let cluster = [];
+        let queue = [startCell];
+        visited.add(startCell);
+
+        while(queue.length > 0) {
+            let current = queue.shift();
+            cluster.push(current);
+
+            // Bu hücreye bağlı constraintleri bul
+            let relatedConstraints = cellToConstraints.get(current) || [];
+            
+            // Bu constraintlere bağlı diğer hücreleri bul
+            relatedConstraints.forEach(c => {
+                c.targets.forEach(neighbor => {
+                    if (!visited.has(neighbor)) {
+                        visited.add(neighbor);
+                        queue.push(neighbor);
+                    }
+                });
+            });
+        }
+        clusters.push(cluster);
+    });
+
+    // 3. Her Kümeyi Ayrı Ayrı Çöz
+    let totalSolutionsCount = 0; // Global istatistik hesabı için karmaşık, şimdilik yerel çözüyoruz.
+    let minMinesTotal = 0;
+    let maxMinesTotal = 0;
+    let solvedMines = 0; // Çözülen kümelerden gelen ortalama mayın sayısı
+
+    // Sonuçları saklamak için map
+    let cellProbabilities = new Map(); 
+
+    for (let cluster of clusters) {
+        // Bu kümeye ait constraintleri filtrele
+        let clusterSet = new Set(cluster);
+        let clusterConstraints = constraints.filter(c => 
+            c.targets.some(t => clusterSet.has(t))
+        );
+
+        // Backtracking Çözücü
+        let solutions = solveCluster(cluster, clusterConstraints);
+        
+        if (solutions.length === 0) {
+            updateStatus("Hata: İmkansız konfigürasyon!");
             return;
         }
 
-        let cell = frontierCells[index];
+        // Olasılıkları hesapla
+        let mineCounts = new Array(cluster.length).fill(0);
+        solutions.forEach(sol => {
+            sol.forEach((isMine, idx) => {
+                if(isMine) mineCounts[idx]++;
+            });
+        });
 
-        // Dene: Mayın Var
-        cell.isMine = true;
-        if (isValidSoFar(cell)) {
-            solve(index + 1);
-        }
+        // Bu kümedeki her hücre için olasılığı kaydet
+        cluster.forEach((cell, idx) => {
+            let prob = (mineCounts[idx] / solutions.length) * 100;
+            cellProbabilities.set(cell, prob);
+        });
 
-        // Dene: Mayın Yok
-        cell.isMine = false;
-        if (isValidSoFar(cell)) {
-            solve(index + 1);
-        }
-        
-        // Temizlik
-        delete cell.isMine;
+        // İstatistik (Toplam mayın tahmini için)
+        let minesInCluster = solutions.map(s => s.filter(x=>x).length);
+        let avgMines = minesInCluster.reduce((a,b)=>a+b,0) / minesInCluster.length;
+        solvedMines += avgMines;
     }
 
-    // Kısıtlamaları kontrol et. Sadece şu ana kadar atanmış hücrelerle ilgili kısıtları kontrol eder.
-    function isValidSoFar(changedCell) {
-        // Değişen hücreyi etkileyen constraintlere bak
-        // Performans için: Normalde constraint listesini hücreye göre maplemek gerekir.
-        // Basitlik için tüm constraintleri geziyoruz (Grid küçükse sorun olmaz).
-        
-        for (let c of constraints) {
-            let placedMines = 0;
-            let undefinedCells = 0;
-            let isRelevant = false;
+    // 4. Sonuçları Ekrana Bas
+    cellProbabilities.forEach((prob, cell) => {
+        showProbability(cell.x, cell.y, prob);
+    });
 
-            for (let t of c.targets) {
-                // target referansını frontierCells içindeki gerçek objeyle eşleştir
-                // (Referanslar aynı olmalı, değilse koordinatla bul)
-                let realCell = frontierCells.find(f => f.x === t.x && f.y === t.y);
-                
-                if (realCell) {
-                    if (realCell === changedCell) isRelevant = true;
-                    if (realCell.isMine === true) placedMines++;
-                    else if (realCell.isMine === undefined) undefinedCells++;
-                }
+    // 5. Geriye Kalan (Sınıra değmeyen) Hücreler
+    // (Toplam Mayın - Bilinen Bayraklar - Sınırda Çıkan Tahmini Mayınlar) / Kalan Boşluklar
+    let remainingMines = totalMines - knownMines - solvedMines;
+    
+    if (otherUnknowns.length > 0) {
+        // Kalan mayın sayısı eksiye düşerse 0 kabul et (veya hata var demektir)
+        if (remainingMines < 0) remainingMines = 0;
+        
+        let otherProb = (remainingMines / otherUnknowns.length) * 100;
+        otherProb = Math.max(0, Math.min(100, otherProb)); // %0-100 arası sınırla
+
+        otherUnknowns.forEach(cell => {
+            showProbability(cell.x, cell.y, otherProb);
+        });
+    }
+
+    updateStatus("Analiz tamamlandı.");
+}
+
+// --- YENİ BACKTRACKING ÇÖZÜCÜ (KÜME BAZLI) ---
+function solveCluster(cells, constraints) {
+    let solutions = [];
+    let currentAssignment = new Array(cells.length).fill(undefined);
+    
+    // Constraintleri optimize et: Her constraint hangi indexteki hücreleri ilgilendiriyor?
+    let optimizedConstraints = constraints.map(c => ({
+        value: c.value,
+        targetIndices: c.targets.map(t => cells.indexOf(t)).filter(i => i !== -1)
+    }));
+
+    function recurse(index) {
+        if (index === cells.length) {
+            solutions.push([...currentAssignment]);
+            return;
+        }
+
+        // Hücre: cells[index]
+        // Dene: Mayın YOK (False)
+        currentAssignment[index] = false;
+        if (isValid(index)) {
+            recurse(index + 1);
+        }
+
+        // Dene: Mayın VAR (True)
+        currentAssignment[index] = true;
+        if (isValid(index)) {
+            recurse(index + 1);
+        }
+        
+        currentAssignment[index] = undefined;
+    }
+
+    function isValid(uptoIndex) {
+        // Sadece değişen hücreyle ilgili constraintlere bakmak en iyisi ama
+        // basitlik için bu kümedeki tüm constraintleri hızlıca tarayalım.
+        // Zaten küme küçük olduğu için çok hızlı olacak.
+        
+        for (let c of optimizedConstraints) {
+            let mineCount = 0;
+            let undefinedCount = 0;
+            
+            // Bu constraintin ilgilendiği hücrelere bak
+            for (let idx of c.targetIndices) {
+                if (currentAssignment[idx] === true) mineCount++;
+                else if (currentAssignment[idx] === undefined) undefinedCount++;
             }
 
-            if (!isRelevant) continue;
-
-            // Eğer koyduğumuz mayınlar sayıyı geçtiyse -> GEÇERSİZ
-            if (placedMines > c.value) return false;
-
+            // Eğer koyulan mayınlar sayıyı aştıysa -> GEÇERSİZ
+            if (mineCount > c.value) return false;
+            
             // Eğer kalan boşluklar sayıyı tamamlamaya yetmiyorsa -> GEÇERSİZ
-            // (Gerekli Mayın) > (Şu anki + Kalan Bilinmeyenler)
-            if (c.value > placedMines + undefinedCells) return false;
+            if (mineCount + undefinedCount < c.value) return false;
         }
         return true;
     }
 
-    // Çözücüyü çalıştır
-    // Web Worker olmadan büyük tahtalarda donabilir, bu yüzden küçük tutun.
-    setTimeout(() => {
-        solve(0);
-
-        if (validSolutions === 0) {
-            updateStatus("Bu konfigürasyon imkansız!");
-            return;
-        }
-
-        // Frontier Olasılıklarını Yazdır
-        frontierCells.forEach((cell, i) => {
-            let probability = (mineCounts[i] / validSolutions) * 100;
-            showProbability(cell.x, cell.y, probability);
-        });
-
-        // Frontier olmayanlar (Kalanlar)
-        // Toplam olası mayın sayısı hesabı karmaşık olabilir (Global Constraint).
-        // Mr Gris sitesi, toplam mayın sayısını da bir constraint olarak kullanır.
-        // Burada basitlik adına: (Toplam Mayın - Bilinen Bayrak - Ortalama Frontier Mayını) / Kalan Hücre
-        
-        let avgFrontierMines = mineCounts.reduce((a,b)=>a+b, 0) / validSolutions;
-        let remainingMines = totalMines - knownMines - avgFrontierMines;
-        
-        if (otherUnknowns.length > 0) {
-            let otherProb = (remainingMines / otherUnknowns.length) * 100;
-            otherProb = Math.max(0, Math.min(100, otherProb)); // Sınırla
-            
-            otherUnknowns.forEach(cell => {
-                showProbability(cell.x, cell.y, otherProb);
-            });
-        }
-
-        updateStatus("Analiz tamamlandı.");
-    }, 10);
+    recurse(0);
+    return solutions;
 }
 
 function getNeighbors(x, y) {
@@ -305,95 +375,69 @@ function showProbability(x, y, percent) {
     const cellObj = grid[y][x];
     const el = cellObj.element;
     
+    // Eski yazıyı sil
+    const old = el.querySelector('.probability');
+    if(old) old.remove();
+
     const probDiv = document.createElement('div');
     probDiv.className = 'probability';
     
-    // Yuvarlanmış yüzdeyi alalım (99.9 gibi sayılar karışıklık yaratmasın)
-    let roundedPercent = Math.round(percent);
+    let rounded = Math.round(percent);
+    if (rounded < 0) rounded = 0;
+    if (rounded > 100) rounded = 100;
 
-    // --- RENK AYARLARI ---
-    const colorZero = '#1100ffff';      // %0 için Kırmızı
-    const colorHundred = '#FF0000';   // %100 için Lacivert
-    const colorFill = '#4CAF50';      // Dolum Rengi (Yeşil)
-    const colorEmpty = '#FFEB3B';     // Boşluk Rengi (Sarı)
-    
-    if (roundedPercent === 100) {
-        // KESİN MAYIN -> LACİVERT
-        probDiv.style.backgroundColor = colorHundred;
-        probDiv.style.color = '#ffffff'; // Lacivert üstüne beyaz yazı
-    } else if (roundedPercent === 0) {
-        // KESİN GÜVENLİ -> KIRMIZI
-        probDiv.style.backgroundColor = colorZero;
-        probDiv.style.color = '#ffffff'; // Kırmızı üstüne beyaz yazı
+    // Renkler
+    if (rounded === 100) {
+        probDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.8)'; // Kırmızı (Bomba)
+        probDiv.style.color = 'white';
+    } else if (rounded === 0) {
+        probDiv.style.backgroundColor = 'rgba(0, 0, 255, 0.6)'; // Mavi (Güvenli)
+        probDiv.style.color = 'white';
     } else {
-        // ARADAKİLER -> YEŞİL / SARI GRADIENT
-        // Alttan yukarı doğru %X kadar Yeşil, kalanı Sarı
-        probDiv.style.background = `linear-gradient(to top, ${colorFill} ${percent}%, ${colorEmpty} ${percent}%)`;
-        probDiv.style.color = '#000000'; // Sarı/Yeşil üstüne siyah yazı daha iyi okunur
+        // %0 Yeşil -> %100 Sarı/Turuncu/Kırmızı
+        let hue = 120 - (rounded * 1.2); 
+        probDiv.style.background = `linear-gradient(135deg, hsl(${hue}, 100%, 40%), hsl(${hue}, 100%, 30%))`;
+        probDiv.style.color = 'white';
+        probDiv.style.textShadow = '1px 1px 2px black';
     }
     
-    // Ortak Stil Ayarları
-    probDiv.style.fontWeight = 'bold';
-    // Yazı gölgesi (Okunabilirlik için)
-    if (roundedPercent > 0 && roundedPercent < 100) {
-        probDiv.style.textShadow = '0px 0px 2px #fff'; // Ara renklerde beyaz gölge
-    } else {
-        probDiv.style.textShadow = 'none'; // Düz renklerde gölgeye gerek yok
-    }
-    
+    probDiv.style.position = 'absolute';
+    probDiv.style.width = '100%';
+    probDiv.style.height = '100%';
     probDiv.style.display = 'flex';
     probDiv.style.alignItems = 'center';
     probDiv.style.justifyContent = 'center';
-    probDiv.style.fontSize = '13px';
-
-    // Yüzdeyi yaz
-    probDiv.innerText = roundedPercent + '%';
+    probDiv.style.fontSize = '12px';
+    probDiv.style.fontWeight = 'bold';
+    probDiv.innerText = rounded + '%';
     
+    el.style.position = 'relative'; // Div içinde div
     el.appendChild(probDiv);
 }
 
-function updateStatus(msg) {
-    document.getElementById('status').innerText = msg;
-}
-
-
-// script.js dosyasının EN ALTINA ekle:
-
-// Dışarıdan gelen mesajları dinle
+// Listener
 window.addEventListener('message', (event) => {
-    // Güvenlik kontrolü: Sadece beklediğimiz veriyi işleyelim
     if (!event.data || event.data.type !== 'SYNC_BOARD') return;
-
-    const gameData = event.data.payload;
+    const d = event.data.payload;
     
-    // Gelen veriye göre inputları güncelle
-    document.getElementById('width').value = gameData.width;
-    document.getElementById('height').value = gameData.height;
-    document.getElementById('totalMines').value = gameData.totalMines;
-
-    // Tahtayı yeniden oluştur
+    document.getElementById('width').value = d.width;
+    document.getElementById('height').value = d.height;
+    document.getElementById('totalMines').value = d.totalMines;
+    
     resetBoard();
-
-    // Hücreleri doldur
-    gameData.grid.forEach(row => {
-        row.forEach(cellData => {
-            if (cellData.status === 'unknown') return; // Zaten varsayılan
-
-            const cellObj = grid[cellData.y][cellData.x];
-            
-            if (cellData.status === 'flag') {
-                cellObj.state = 'flag';
-            } else if (cellData.status === 'safe') {
-                cellObj.state = 'safe';
-                cellObj.value = cellData.value;
+    
+    d.grid.forEach(row => {
+        row.forEach(c => {
+            if (c.status === 'unknown') return;
+            const cell = grid[c.y][c.x];
+            if (c.status === 'flag') cell.state = 'flag';
+            else if (c.status === 'safe') {
+                cell.state = 'safe';
+                cell.value = c.value;
             }
-            
-            // Görünümü güncelle
-            renderCell(cellData.x, cellData.y);
+            renderCell(c.x, c.y);
         });
     });
-
-    // Otomatik analiz başlat
+    
     analyzeBoard();
 });
-
