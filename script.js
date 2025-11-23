@@ -68,7 +68,7 @@ function renderCell(x, y) {
         el.classList.add('open');
         if (cell.value > 0) {
             el.innerText = cell.value;
-            el.style.color = getNumberColor(cell.value);
+            el.classList.add(`val-${cell.value}`);
             el.style.fontWeight = 'bold';
         }
     } else if (cell.state === 'flag') {
@@ -382,3 +382,4 @@ window.addEventListener('message', (event) => {
 
     analyzeBoard();
 });
+
