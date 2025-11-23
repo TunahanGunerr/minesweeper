@@ -1,226 +1,155 @@
 :root {
-    --bg-body: #121212;       /* Arka plan: Koyu Gri */
-    --bg-panel: #1e1e1e;      /* Panel rengi */
-    --cell-closed: #3a3a3c;   /* Kapalı kutu rengi */
-    --cell-open: #1e1e1e;     /* Açık kutu rengi */
-    --cell-hover: #4a4a4c;    /* Mouse gelince */
-    --border-color: #000000;
-    --text-main: #e0e0e0;
-    --accent-color: #2196F3;  /* Mavi vurgu */
+    --bg-color: #c0c0c0;
+    --border-light: #ffffff;
+    --border-dark: #808080;
+    --cell-size: 24px; /* Hücre boyutunu 24px yaptım ki 100x100 sığsın */
 }
 
 body {
-    font-family: 'Verdana', sans-serif; /* Okunabilirlik için en iyi font */
-    background-color: var(--bg-body);
-    color: var(--text-main);
-    margin: 0;
-    padding: 0;
-    height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f0f0f0;
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    overflow: hidden; /* Sayfanın kendisi kaymasın, sadece board kaysın */
+    justify-content: center;
+    padding: 20px;
+    height: 100vh;
+    overflow: hidden; /* Sayfa kaymasın, sadece tahta kaysın */
+    box-sizing: border-box;
 }
 
-/* Ana Kapsayıcı */
 .container {
-    background-color: var(--bg-panel);
-    width: 98%;
-    height: 98vh;
+    background-color: var(--bg-color);
+    padding: 15px;
+    border: 2px solid #808080;
+    box-shadow: 5px 5px 15px rgba(0,0,0,0.3);
     display: flex;
     flex-direction: column;
-    border-radius: 8px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    border: 1px solid #333;
-    padding: 10px;
-    box-sizing: border-box;
+    max-height: 95vh;
 }
 
 h1 {
     text-align: center;
-    margin: 5px 0;
-    font-size: 18px;
-    color: var(--text-main);
-    letter-spacing: 1px;
-    text-transform: uppercase;
+    margin-top: 0;
+    font-size: 24px;
+    color: #333;
 }
 
-/* Kontrol Paneli (Sabit kalır) */
 .controls {
-    background: #252525;
+    margin-bottom: 15px;
     padding: 10px;
-    border-radius: 6px;
+    background: #dcdcdc;
+    border: 1px solid #999;
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
-    justify-content: center;
     align-items: center;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    margin-bottom: 10px;
-    flex-shrink: 0; /* Küçülmesini engelle */
+    justify-content: center;
 }
 
 .controls input {
-    width: 60px;
-    padding: 6px;
-    background: #333;
-    border: 1px solid #555;
-    color: white;
-    border-radius: 4px;
-    text-align: center;
-    font-weight: bold;
+    width: 50px;
+    padding: 3px;
 }
 
 button {
-    padding: 8px 20px;
+    padding: 5px 15px;
     cursor: pointer;
-    background: var(--accent-color);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    font-weight: bold;
-    text-transform: uppercase;
-    font-size: 12px;
-    transition: background 0.2s;
+    background: #e0e0e0;
+    border: 2px outset #fff;
 }
 
-button:hover {
-    background: #1976D2;
+button:active {
+    border: 2px inset #fff;
 }
 
-/* Araç Çubuğu */
 .toolbar {
     display: flex;
     gap: 5px;
-    justify-content: center;
-    padding: 5px;
-    background: #252525;
-    border-radius: 6px;
     margin-bottom: 10px;
-    flex-shrink: 0;
+    justify-content: center;
+    background: #eee;
+    padding: 5px;
+    border: 1px inset #fff;
 }
 
 .tool {
-    width: 35px;
-    height: 35px;
+    width: 30px;
+    height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
-    background: #333;
+    border: 2px outset #fff;
+    background: var(--bg-color);
     cursor: pointer;
     font-weight: bold;
-    font-size: 16px;
-    color: #bbb;
-    transition: all 0.2s;
-    border: 2px solid transparent;
 }
 
-.tool:hover { background: #444; }
-
-.tool.active {
-    border-color: var(--accent-color);
-    background: #444;
-    color: white;
-    box-shadow: 0 0 10px rgba(33, 150, 243, 0.4);
+.tool:active, .tool.active {
+    border: 2px inset #fff;
+    background: #ddd;
 }
 
-/* Tahta Alanı (Scroll Buraya Gelir) */
+/* Renkler */
+.tool[data-tool="1"] { color: blue; }
+.tool[data-tool="2"] { color: green; }
+.tool[data-tool="3"] { color: red; }
+.tool[data-tool="4"] { color: darkblue; }
+.tool[data-tool="5"] { color: maroon; }
+.tool[data-tool="6"] { color: teal; }
+.tool[data-tool="7"] { color: black; }
+.tool[data-tool="8"] { color: gray; }
+
+/* Tahta (Scroll Özelliği Eklendi) */
 #board {
     display: grid;
-    gap: 2px; /* Kareler arası boşluk */
-    background-color: #000; /* Izgara çizgisi rengi */
-    padding: 2px;
-    border-radius: 4px;
-    overflow: auto; /* Sadece burası kaydırılır */
-    flex-grow: 1; /* Kalan tüm alanı kapla */
-    align-content: start; /* İçerik azsa yukarı yasla */
-    justify-content: center; /* Ortala */
-    
-    /* Özel Scrollbar */
-    scrollbar-width: thin;
-    scrollbar-color: #555 #222;
+    gap: 0; /* Klasik görünümde boşluk olmaz */
+    background-color: #808080;
+    padding: 5px;
+    border: 3px inset #fff; /* İçe göçük efekt */
+    overflow: auto; /* Büyük haritalar için scroll */
+    max-width: 95vw;
+    max-height: 80vh;
+    margin: 0 auto;
 }
 
-/* Webkit Scrollbar (Chrome/Edge) */
-#board::-webkit-scrollbar { width: 10px; height: 10px; }
-#board::-webkit-scrollbar-track { background: #222; }
-#board::-webkit-scrollbar-thumb { background: #555; border-radius: 5px; }
-#board::-webkit-scrollbar-thumb:hover { background: #777; }
-
-/* Hücre Stilleri */
 .cell {
-    width: 28px;  /* Kare boyutu */
-    height: 28px;
+    width: 24px;
+    height: 24px;
+    background-color: #c0c0c0;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 900; /* Çok kalın yazı */
-    font-size: 16px; /* Okunaklı font */
+    font-weight: bold;
+    font-size: 14px; /* Yazılar okunaklı olsun */
     cursor: default;
     position: relative;
-    user-select: none;
-    border-radius: 2px;
+    box-sizing: border-box;
+    border: 2px outset #fff; /* Kapalıyken dışa çıkık */
 }
 
 /* Kapalı Hücre */
 .cell.unknown {
-    background-color: var(--cell-closed);
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05); /* Hafif çerçeve */
+    border: 2px outset #fff;
 }
-.cell.unknown:hover { background-color: var(--cell-hover); }
 
 /* Açık Hücre */
 .cell.open {
-    background-color: var(--cell-open);
+    border: 1px solid #7b7b7b; /* Açıkken düz çizgi */
+    background-color: #c0c0c0;
 }
 
-/* Bayrak */
 .cell.flag { 
-    background-color: var(--cell-closed);
-    font-size: 18px;
+    color: red; 
 }
 
-/* --- SAYI RENKLERİ (Koyu tema için parlak) --- */
-/* Bu classlar JS'de yoksa, style özelliğinden verirsin ama class eklemek daha temiz */
-/* Eğer JS tarafında "val-1" gibi class ekletirsen süper olur. */
-/* Ama mevcut JS'de style.color veriyorsun, o yüzden aşağıdaki override'ları !important ile ezebilirsin veya JS'nin verdiği renkleri kullanırsın. */
-/* Ben JS kodunda class eklemiştim (önceki adımda), o yüzden bunlar çalışır: */
-
-.cell.val-1 { color: #5c9eff !important; } /* Açık Mavi */
-.cell.val-2 { color: #66bb6a !important; } /* Açık Yeşil */
-.cell.val-3 { color: #ef5350 !important; } /* Açık Kırmızı */
-.cell.val-4 { color: #ab47bc !important; } /* Mor */
-.cell.val-5 { color: #ffa726 !important; } /* Turuncu */
-.cell.val-6 { color: #26c6da !important; } /* Turkuaz */
-.cell.val-7 { color: #bdbdbd !important; } /* Gri */
-.cell.val-8 { color: #78909c !important; } /* Koyu Gri */
-
-
-/* --- OLASILIK YAZISI --- */
+/* Olasılık Yazısı (prob-text) */
 .prob-text {
     position: absolute;
     top: 0; left: 0; width: 100%; height: 100%;
     display: flex; align-items: center; justify-content: center;
     font-size: 11px;
     font-weight: bold;
-    color: #fff;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.9); /* Siyah gölge (okunurluk için şart) */
+    color: #000; /* Açık renk arka planda siyah yazı */
+    text-shadow: 0px 0px 2px #fff; /* Okunabilirlik için beyaz gölge */
     z-index: 10;
-}
-
-/* Durum Mesajı */
-#status {
-    margin-top: 10px;
-    text-align: center;
-    color: #888;
-    font-size: 12px;
-    flex-shrink: 0;
-}
-
-/* Mobil / Küçük Ekran Uyumu */
-@media (max-width: 600px) {
-    .controls input { width: 40px; }
-    .cell { width: 24px; height: 24px; font-size: 12px; }
+    pointer-events: none;
 }
